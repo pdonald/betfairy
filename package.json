@@ -1,0 +1,34 @@
+{
+  "name": "betfairy",
+  "version": "1.0.0-dev",
+  "author": "Pēteris Ņikiforovs <p@mak.id.lv>",
+  "description": "Betfair API-NG",
+  "main": "./index",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pdonald/betfairy.git"
+  },
+  "keywords": [
+    "betfair",
+    "betfair api",
+    "betfair api-ng",
+    "betfair aping"
+  ],
+  "dependencies" : {
+    "request"    :  "*",
+    "async"      :  "*",
+    "xml2js"     :  "*"
+  },
+  "devDependencies" : {
+    "coffee-script" : "*",
+    "mocha"         : "*",
+    "should"        : "*"
+  },
+  "scripts": {
+    "test": "mocha --compilers coffee:coffee-script --reporter spec"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=0.10"
+  }
+}

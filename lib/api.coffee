@@ -85,13 +85,44 @@ class BetfairSession
 
     @
 
+  listEventTypes: (params, callback) =>
+    params = clone params
+    params.locale ?= @locale if @locale?
+    @invokeMethod 'listEventTypes', params, callback
+
+  listEvents: (params, callback) =>
+    params = clone params
+    params.locale ?= @locale if @locale?
+    @invokeMethod 'listEvents', params, callback
+
+  listCompetitions: (params, callback) =>
+    params = clone params
+    params.locale ?= @locale if @locale?
+    @invokeMethod 'listCompetitions', params, callback
+
+  listCountries: (params, callback) =>
+    params = clone params
+    params.locale ?= @locale if @locale?
+    @invokeMethod 'listCountries', params, callback
+
+  listVenues: (params, callback) =>
+    params = clone params
+    params.locale ?= @locale if @locale?
+    @invokeMethod 'listVenues', params, callback
+
+  listTimeRanges: (params, callback)=>
+    params = clone params
+    @invokeMethod 'listTimeRanges', params, callback
+
+  listMarketTypes: (params, callback) =>
+    params = clone params
+    params.locale ?= @locale if @locale?
+    @invokeMethod 'listMarketTypes', params, callback
+
   listMarketCatalogue: (params, callback) =>
-    # todo: validate params
-    # todo: check if response is an array
     params = clone params
     params.locale ?= @locale if @locale?
     @invokeMethod 'listMarketCatalogue', params, callback
-    @
 
   listMarketCatalogueByMarketIds: (marketIds, params, doneCallback, eachCallback) =>
     params = clone params
@@ -138,13 +169,10 @@ class BetfairSession
     @
 
   listMarketBook: (params, callback) =>
-    # todo: validate params
-    # todo: check if response is an array
     params = clone params
     params.locale ?= @locale if @locale?
     params.currencyCode ?= @currency if @currency?
     @invokeMethod 'listMarketBook', params, callback
-    @
 
   listMarketBookAll: (marketIds, params, doneCallback, eachCallback) =>
     params = clone params
@@ -191,21 +219,31 @@ class BetfairSession
     @
 
   invokeMethod: (method, params, callback) =>
-    request =
-      url: services.rest + method + '/'
-      json: params
-      headers:
-        'X-Application': @appKey
-        'X-Authentication': @sessionToken
-        'Accept': 'application/json'
+    invocation =
+      method: method
+      params: params
+      request:
+        url: services.rest + method + '/'
+        json: params
+        headers:
+          'X-Application': @appKey
+          'X-Authentication': @sessionToken
+          'Accept': 'application/json'
+      sent: new Date()
 
-    http.post request, (err, response, data) ->
+    http.post invocation.request, (err, response, data) ->
+      invocation.received = new Date()
+      invocation.duration = invocation.received - invocation.sent
+      invocation.response = response
+      invocation.data = data
+
       if err or response.statusCode isnt 200
-        err = new BetfairError err, response, request
+        err = new BetfairError err, response, invocation.request
+        invocation.error = err
 
-      callback? err, data, response, request
+      callback?.bind?(invocation)(err, data)
 
-    @
+    invocation
 
   # Splits an array into smaller arrays
   # with at most "max" number of elements in each array

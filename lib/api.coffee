@@ -12,9 +12,10 @@ clone = (obj) ->
 # TODO: parallel requests
 # TODO: timeout
 # TODO: priorities
-class BetfairSession
+class Session
   services =
-    rest: 'https://beta-api.betfair.com/rest/v1.0/'
+    betting: prefix: 'SportsAPING/v1.0/', url: 'https://beta-api.betfair.com/betting/json-rpc'
+    account: prefix: 'AccountAPING/v1.0/', url: 'https://beta-api.betfair.com/account/json-rpc'
     global: 'https://api.betfair.com/global/v3/BFGlobalService'
 
   constructor: (options) ->
@@ -24,17 +25,41 @@ class BetfairSession
     @locale       = options?.locale       ? null
     @currency     = options?.currency     ? null
 
+    @lastInvocationId = 0
+
     # Options for this session
     @options =
       maxWeightPerRequest: options?.maxWeightPerRequest ? 200
 
-    # It's possible to override service addresses
-    services.rest   = options.services.rest   if options?.services?.rest?
-    services.global = options.services.global if options?.services?.global?
+    @auth = {}
+    @auth.username         = @options.username         ? null
+    @auth.password         = @options.password         ? null
+    @auth.vendorSoftwareId = @options.vendorSoftwareId ? null
+    @auth.productId        = @options.productId        ? null
+    @auth.locationId       = @options.locationId       ? null
+
+    # Aliases
+    @betting =
+      listEventTypes: @listEventTypes
+      listEvents: @listEvents
+      listCompetitions: @listCompetitions
+      listCountries: @listCountries
+      listVenues: @listVenues
+      listTimeRanges: @listTimeRanges
+      listMarketTypes: @listMarketTypes
+      listMarketCatalogue: @listMarketCatalogue
+      invokeMethod: (method, params, callback) => @invokeMethod 'betting', method, params, callback
+
+    @account =
+      createDeveloperAppKeys: @createDeveloperAppKeys
+      getDeveloperAppKeys: @getDeveloperAppKeys
+      getAccountFunds: @getAccountFunds
+      getAccountDetails: @getAccountDetails
+      invokeMethod: (method, params, callback) => @invokeMethod 'account', method, params, callback
 
   login: () =>
-    login = @options     if arguments.length is 0 # no arguments, use @options
-    login = @options     if arguments.length is 1 and typeof arguments[0] is 'function' # only callback, use @options
+    login = @auth        if arguments.length is 0 # no arguments, use @auth
+    login = @auth        if arguments.length is 1 and typeof arguments[0] is 'function' # only callback, use @auth
     login = arguments[0] if arguments.length is 2 # options & callback
 
     login                 ?= {}
@@ -43,10 +68,10 @@ class BetfairSession
     login.vendorSoftwareId = arguments[2] if arguments.length >= 4 # username, password, vendorId, callback
     login.productId        = arguments[3] if arguments.length >= 5 # username, password, vendorId, productId, callback
     login.locationId       = arguments[4] if arguments.length >= 6 # username, password, vendorId, productId, locationId, callback
-    callback = arguments[arguments.length - 1] # callback is  always the last parameter
+    callback = arguments[arguments.length - 1] if arguments.length > 0 # callback is  always the last parameter
 
     # use the free api if not set
-    login.productId = 82 unless login.productId? or login.vendorSoftwareId
+    login.productId = 82 unless login.productId? or login.vendorSoftwareId?
 
     request =
       url: services.global
@@ -88,41 +113,41 @@ class BetfairSession
   listEventTypes: (params, callback) =>
     params = clone params
     params.locale ?= @locale if @locale?
-    @invokeMethod 'listEventTypes', params, callback
+    @invokeMethod 'betting', 'listEventTypes', params, callback
 
   listEvents: (params, callback) =>
     params = clone params
     params.locale ?= @locale if @locale?
-    @invokeMethod 'listEvents', params, callback
+    @invokeMethod 'betting', 'listEvents', params, callback
 
   listCompetitions: (params, callback) =>
     params = clone params
     params.locale ?= @locale if @locale?
-    @invokeMethod 'listCompetitions', params, callback
+    @invokeMethod 'betting', 'listCompetitions', params, callback
 
   listCountries: (params, callback) =>
     params = clone params
     params.locale ?= @locale if @locale?
-    @invokeMethod 'listCountries', params, callback
+    @invokeMethod 'betting', 'listCountries', params, callback
 
   listVenues: (params, callback) =>
     params = clone params
     params.locale ?= @locale if @locale?
-    @invokeMethod 'listVenues', params, callback
+    @invokeMethod 'betting', 'listVenues', params, callback
 
   listTimeRanges: (params, callback)=>
     params = clone params
-    @invokeMethod 'listTimeRanges', params, callback
+    @invokeMethod 'betting', 'listTimeRanges', params, callback
 
   listMarketTypes: (params, callback) =>
     params = clone params
     params.locale ?= @locale if @locale?
-    @invokeMethod 'listMarketTypes', params, callback
+    @invokeMethod 'betting', 'listMarketTypes', params, callback
 
   listMarketCatalogue: (params, callback) =>
     params = clone params
     params.locale ?= @locale if @locale?
-    @invokeMethod 'listMarketCatalogue', params, callback
+    @invokeMethod 'betting', 'listMarketCatalogue', params, callback
 
   listMarketCatalogueByMarketIds: (marketIds, params, doneCallback, eachCallback) =>
     params = clone params
@@ -172,7 +197,7 @@ class BetfairSession
     params = clone params
     params.locale ?= @locale if @locale?
     params.currencyCode ?= @currency if @currency?
-    @invokeMethod 'listMarketBook', params, callback
+    @invokeMethod 'betting', 'listMarketBook', params, callback
 
   listMarketBookAll: (marketIds, params, doneCallback, eachCallback) =>
     params = clone params
@@ -218,30 +243,52 @@ class BetfairSession
     async.forEachLimit chunks, 5, loadChunk, done
     @
 
-  invokeMethod: (method, params, callback) =>
+  getAccountFunds: (callback) =>
+    @invokeMethod 'account', 'getAccountFunds', null, callback
+
+  getAccountDetails: (callback) =>
+    @invokeMethod 'account', 'getAccountDetails', null, callback
+
+  createDeveloperApp: (params, callback) =>
+    @invokeMethod 'account', 'createDeveloperApp', params, callback
+
+  getDeveloperAppKeys: (callback) =>
+    @invokeMethod 'account', 'getDeveloperAppKeys', null, callback
+
+  invokeMethod: (service, method, params, callback) =>
+    @lastInvocationId += 1
+    id = @lastInvocationId
+
     invocation =
+      id: id
+      service: service
       method: method
       params: params
       request:
-        url: services.rest + method + '/'
-        json: params
+        url: services[service].url
+        json:
+          id: id
+          jsonrpc: '2.0'
+          method: services[service].prefix + method
+          params: params
         headers:
           'X-Application': @appKey
           'X-Authentication': @sessionToken
           'Accept': 'application/json'
       sent: new Date()
 
-    http.post invocation.request, (err, response, data) ->
+    http.post invocation.request, (err, response) ->
       invocation.received = new Date()
       invocation.duration = invocation.received - invocation.sent
       invocation.response = response
-      invocation.data = data
+      invocation.responseId = response.body?.id
+      invocation.result = response.body?.result
 
-      if err or response.statusCode isnt 200
-        err = new BetfairError err, response, invocation.request
+      if err or response.statusCode isnt 200 or response.body?.error?
+        err = new Error err, invocation
         invocation.error = err
 
-      callback?.bind?(invocation)(err, data)
+      callback?.bind?(invocation)(err, invocation.result)
 
     invocation
 
@@ -255,21 +302,26 @@ class BetfairSession
       to = array.length if to >= array.length
       array[from..to-1]
 
-class BetfairError extends Error
-  constructor: (@error, @response, @request) ->
+class Error extends global.Error
+  constructor: (@error, invocation) ->
+    super
     @name = 'BetfairError'
-    @message = @error
 
-    if not @error
-      switch @response.statusCode
+    if @error?
+      @message = @error + ''
+    else if invocation.response?.body?.error?.code?
+      @code = invocation.response.body.error.code
+      @message = invocation.response.body.error.message
+    else if invocation.response?.body?.error?.APINGException?
+      @exception = invocation.response.body.error.APINGException
+      @message = @exception.errorCode + (if @exception.errorDetails? then ': ' + @exception.errorDetails else '')
+    else
+      switch invocation.response.statusCode
         when 500 then @message = 'API is down'
         when 404 then @message = 'API method was not found'
         when 400 then @message = 'Bad API request'
-        else          @message = @response.statusText or 'API response HTTP status code: ' + @response.statusCode
+        when 200 then @message = 'Weird, got 200 OK'
+        else          @message = invocation.response.statusText or 'API response HTTP status code: ' + invocation.response.statusCode
 
-    if @response?.body?.detail?.APINGException?
-      @exception = @response.body.detail.APINGException
-      @message = @exception.errorCode + (if @exception.errorDetails? then ': ' + @exception.errorDetails else '')
-
-exports.BetfairSession = BetfairSession
-exports.BetfairError = BetfairError
+exports.Session = Session
+exports.Error = Error

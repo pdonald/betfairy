@@ -184,6 +184,52 @@ describe 'api', ->
           origParams.should.equal JSON.stringify params
           done()
 
+  describe 'accounts', ->
+    session = null
+
+    before (done) ->
+      session = new betfairy.Session settings
+      session.login settings, done
+
+    describe 'getAccountFunds', ->
+      it 'should work', (done) ->
+        session.getAccountFunds (err, funds) ->
+          should.not.exist err
+          should.exist funds
+          should.exist funds.availableToBetBalance
+          funds.availableToBetBalance.should.be.a 'number'
+          should.exist funds.exposure
+          funds.exposure.should.be.a 'number'
+          should.exist funds.retainedCommission
+          funds.retainedCommission.should.be.a 'number'
+          should.exist funds.exposureLimit
+          funds.exposureLimit.should.be.a 'number'
+          done()
+
+    describe 'getAccountDetails', ->
+      it 'should work', (done) ->
+        session.getAccountDetails (err, details) ->
+          should.not.exist err
+          should.exist details
+          should.exist details.currencyCode
+          details.currencyCode.should.have.length 3
+          should.exist details.firstName
+          should.exist details.lastName
+          should.exist details.localeCode
+          details.localeCode.should.have.length 2
+          should.exist details.region
+          should.exist details.timezone
+          should.exist details.discountRate
+          details.discountRate.should.be.a 'number'
+          done()
+
+    describe 'getDeveloperAppKeys', ->
+      it 'should work', (done) ->
+        session.getDeveloperAppKeys (err, apps) ->
+          should.not.exist err
+          should.exist apps
+          done()
+
   describe 'invocation', ->
     session = null
 
@@ -200,6 +246,7 @@ describe 'api', ->
     it 'should return invocation', (done) ->
       invocation = session.listMarketCatalogue params, (err, markets) ->
         should.not.exist err
+        should.exist invocation.service
         should.exist invocation.method
         should.exist invocation.params
         invocation.params.should.eql params
@@ -209,8 +256,8 @@ describe 'api', ->
         should.exist invocation.received
         should.exist invocation.duration
         should.not.exist invocation.error
-        should.exist invocation.data
-        invocation.data.should.eql markets
+        should.exist invocation.result
+        invocation.result.should.eql markets
         done()
 
     it 'should bind invocation to this', (done) ->
@@ -218,3 +265,20 @@ describe 'api', ->
         should.not.exist err
         should.exist @duration
         done()
+
+    it 'should increase call id', (done) ->
+      count = 3
+      prev = null
+      [1..count].forEach ->
+        inv = session.listMarketCatalogue params, (err) ->
+          should.not.exist err
+          should.exist @id
+          should.exist @responseId
+          @id.should.equal @responseId
+          inv.id.should.equal @id
+          inv.id.should.equal @responseId
+          count--
+          done() if count is 0
+
+        inv.id.should.equal prev + 1 if prev?
+        prev = inv.id

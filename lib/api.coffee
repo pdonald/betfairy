@@ -1,6 +1,5 @@
 http   = require 'request'
 async  = require 'async'
-xml2js = require 'xml2js'
 
 clone = (obj) ->
   try
@@ -9,19 +8,20 @@ clone = (obj) ->
     obj
 
 # TODO: reconnect
-# TODO: parallel requests
-# TODO: timeout
-# TODO: priorities
+# TODO: parallel requests + timeout/retries
+# TODO: throttling/priorities
 class Session
   services =
-    betting: prefix: 'SportsAPING/v1.0/', url: 'https://beta-api.betfair.com/betting/json-rpc'
-    account: prefix: 'AccountAPING/v1.0/', url: 'https://beta-api.betfair.com/account/json-rpc'
-    global: 'https://api.betfair.com/global/v3/BFGlobalService'
+    betting: prefix: 'SportsAPING', version: 'v1.0', url: 'https://beta-api.betfair.com/betting/json-rpc'
+    account: prefix: 'AccountAPING', version: 'v1.0', url: 'https://beta-api.betfair.com/account/json-rpc'
+    auth: 'https://identitysso-api.betfair.com/api/certlogin'
 
   constructor: (options) ->
     # Properties that describe the session
     @appKey       = options?.appKey       ? null
+    @appName      = options?.appName      ? null
     @sessionToken = options?.sessionToken ? null
+    # User preferences for this session
     @locale       = options?.locale       ? null
     @currency     = options?.currency     ? null
 
@@ -31,12 +31,14 @@ class Session
     @options =
       maxWeightPerRequest: options?.maxWeightPerRequest ? 200
 
-    @auth = {}
-    @auth.username         = @options.username         ? null
-    @auth.password         = @options.password         ? null
-    @auth.vendorSoftwareId = @options.vendorSoftwareId ? null
-    @auth.productId        = @options.productId        ? null
-    @auth.locationId       = @options.locationId       ? null
+    if options.auth?
+      @auth = options.auth
+    if options.username? or options.password? or options.key? or options.cert?
+      @auth         ?= {}
+      @auth.username = options.username ? null
+      @auth.password = options.password ? null
+      @auth.key      = options.key      ? null
+      @auth.cert     = options.cert     ? null
 
     # Aliases
     @betting =
@@ -61,52 +63,28 @@ class Session
     login = @auth        if arguments.length is 0 # no arguments, use @auth
     login = @auth        if arguments.length is 1 and typeof arguments[0] is 'function' # only callback, use @auth
     login = arguments[0] if arguments.length is 2 # options & callback
-
-    login                 ?= {}
-    login.username         = arguments[0] if arguments.length >= 3 # username, password, callback
-    login.password         = arguments[1] if arguments.length >= 3 # username, password, callback
-    login.vendorSoftwareId = arguments[2] if arguments.length >= 4 # username, password, vendorId, callback
-    login.productId        = arguments[3] if arguments.length >= 5 # username, password, vendorId, productId, callback
-    login.locationId       = arguments[4] if arguments.length >= 6 # username, password, vendorId, productId, locationId, callback
-    callback = arguments[arguments.length - 1] if arguments.length > 0 # callback is  always the last parameter
-
-    # use the free api if not set
-    login.productId = 82 unless login.productId? or login.vendorSoftwareId?
+    callback = arguments[arguments.length - 1] if arguments.length > 0
 
     request =
-      url: services.global
-      headers: 'SOAPAction': 'login'
-      body: '<?xml version="1.0" encoding="utf-8"?>' +
-            '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">' +
-            '    <soap:Body>' +
-            '        <login xmlns="http://www.betfair.com/publicapi/v3/BFGlobalService/">' +
-            '            <request>' +
-            '                <username xmlns="">' + (login.username ? '') + '</username>' +
-            '                <password xmlns="">' + (login.password ? '') + '</password>' +
-            '                <vendorSoftwareId xmlns="">' + (login.vendorSoftwareId ? 0) + '</vendorSoftwareId>' +
-            '                <productId xmlns="">' + (login.productId ? 0) + '</productId>' +
-            '                <locationId xmlns="">' + (login.locationId ? 0) + '</locationId>' +
-            '            </request>' +
-            '        </login>' +
-            '    </soap:Body>' +
-            '</soap:Envelope>'
+      url: services.auth
+      strictSSL: true
+      rejectUnauthorized: true
+      key: login?.key ? null
+      cert: login?.cert ? null
+      json: true
+      headers:
+        'X-Application': @appName ? ''
+      form:
+        username: login?.username ? ''
+        password: login?.password ? ''
 
-    http request, (err, response, body) =>
-      return callback? 'Error making SOAP request', err, response if err
-      return callback? 'Service didn\'t return 200 OK', response if response.statusCode isnt 200
-
-      xml2js.parseString body, (err, result) =>
-        return callback? 'Error parsing SOAP response', err, result, response if err
-        loginResp = result?['soap:Envelope']?['soap:Body']?[0]?['n:loginResponse']?[0]?['n:Result']?[0]
-        return callback? 'Invalid SOAP response', result, response if not loginResp?
-        errorCode = loginResp?.errorCode?[0]?['_']
-        return callback? 'Login failed', errorCode, loginResp, response if errorCode isnt 'OK'
-        headerErrorCode = loginResp?.header?[0]?.errorCode?[0]?['_']
-        return callback? 'Login failed', headerErrorCode, loginResp, response if headerErrorCode isnt 'OK'
-        sessionToken = loginResp?.header?[0]?.sessionToken?[0]?['_']
-        return callback? 'Missing session token', loginResp, response if not sessionToken?
-        @sessionToken = sessionToken
-        callback? null, @
+    http.post request, (err, response, body) =>
+      return callback? new Error err, response: response if err
+      return callback? new Error 'Invalid response', response: response if not body?.loginStatus?
+      return callback? new Error body.loginStatus, response: response if body?.loginStatus isnt 'SUCCESS'
+      return callback? new Error 'Missing sessionToken', response: response if not body?.sessionToken?
+      @sessionToken = body.sessionToken
+      callback? null, @
 
     @
 
@@ -266,10 +244,12 @@ class Session
       params: params
       request:
         url: services[service].url
+        strictSSL: true
+        rejectUnauthorized: true
         json:
           id: id
           jsonrpc: '2.0'
-          method: services[service].prefix + method
+          method: services[service].prefix + '/' + services[service].version + '/' + method
           params: params
         headers:
           'X-Application': @appKey
@@ -302,26 +282,29 @@ class Session
       to = array.length if to >= array.length
       array[from..to-1]
 
-class Error extends global.Error
+class Error
   constructor: (@error, invocation) ->
-    super
+    this.constructor.prototype.__proto__ = global.Error.prototype
+    global.Error.call @
+    global.Error.captureStackTrace this, this.constructor
+
     @name = 'BetfairError'
 
     if @error?
       @message = @error + ''
-    else if invocation.response?.body?.error?.code?
-      @code = invocation.response.body.error.code
-      @message = invocation.response.body.error.message
-    else if invocation.response?.body?.error?.APINGException?
+    else if invocation?.response?.body?.error?.code?
+      @code = invocation?.response.body.error.code
+      @message = invocation?.response.body.error.message
+    else if invocation?.response?.body?.error?.APINGException?
       @exception = invocation.response.body.error.APINGException
       @message = @exception.errorCode + (if @exception.errorDetails? then ': ' + @exception.errorDetails else '')
     else
-      switch invocation.response.statusCode
+      switch invocation?.response?.statusCode
         when 500 then @message = 'API is down'
         when 404 then @message = 'API method was not found'
         when 400 then @message = 'Bad API request'
         when 200 then @message = 'Weird, got 200 OK'
-        else          @message = invocation.response.statusText or 'API response HTTP status code: ' + invocation.response.statusCode
+        else          @message = invocation.response.statusText ? 'API response HTTP status code: ' + invocation.response.statusCode
 
 exports.Session = Session
 exports.Error = Error

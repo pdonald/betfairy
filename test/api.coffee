@@ -1,27 +1,25 @@
 should   = require 'should'
 betfairy = require '../index'
-
-settings =
-  username: ''
-  password: ''
-  appKey: ''
+config   = require './config'
 
 describe 'api', ->
   describe 'login', ->
-    session = null
-
-    beforeEach ->
-      session = new betfairy.Session settings
+    it 'should work', (done) ->
+      session = new betfairy.Session config
+      s = session.login (err, s) ->
+        if err then throw err
+        should.not.exist err
+        should.exist s
+        should.exist s.sessionToken
+        s.should.equal session
+        done()
+      should.exist s
+      s.should.equal session
 
     it 'should login with `options`', (done) ->
-      session.login username: settings.username, password: settings.password, (err) ->
-        should.not.exist err
-        should.exist session.sessionToken
-        done()
-
-    it 'should login with function parameters', (done) ->
-      session.login settings.username, settings.password, (err) ->
-        should.not.exist err
+      session = new betfairy.Session appKey: config.appKey
+      session.login config, (err) ->
+        if err then throw err
         should.exist session.sessionToken
         done()
 
@@ -29,8 +27,8 @@ describe 'api', ->
     session = null
 
     before (done) ->
-      session = new betfairy.Session settings
-      session.login settings, done
+      session = new betfairy.Session config
+      session.login done
 
     beforeEach ->
       session.locale = null
@@ -188,8 +186,8 @@ describe 'api', ->
     session = null
 
     before (done) ->
-      session = new betfairy.Session settings
-      session.login settings, done
+      session = new betfairy.Session config
+      session.login done
 
     describe 'getAccountFunds', ->
       it 'should work', (done) ->
@@ -240,8 +238,8 @@ describe 'api', ->
       maxResults: 2
 
     before (done) ->
-      session = new betfairy.Session settings
-      session.login settings, done
+      session = new betfairy.Session config
+      session.login done
 
     it 'should return invocation', (done) ->
       invocation = session.listMarketCatalogue params, (err, markets) ->

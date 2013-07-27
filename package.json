@@ -16,8 +16,7 @@
   ],
   "dependencies" : {
     "request"    :  "*",
-    "async"      :  "*",
-    "xml2js"     :  "*"
+    "async"      :  "*"
   },
   "devDependencies" : {
     "coffee-script" : "*",
@@ -25,7 +24,7 @@
     "should"        : "*"
   },
   "scripts": {
-    "test": "mocha --compilers coffee:coffee-script --reporter spec"
+    "test": "mocha --compilers coffee:coffee-script --reporter spec --timeout 2000"
   },
   "license": "MIT",
   "engines": {

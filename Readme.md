@@ -1,14 +1,24 @@
 Betfair API-NG
 ==============
 
+Betfair API-NG node.js module. betfairy should be pronounced as bet fairy.
+
 Quick start
 -----------
 
 ```javascript
 var betfair = require('betfairy');
 
-betfair.login({ username: 'abc', password: '123', appKey: 'xxx' }, function(err, session) {
-  if (err) throw err; // BetfairError with message, exception
+var auth = {
+  username: 'user',
+  password: 'pass',
+  appKey: 'Y0urAppl1c4t10nK3y',
+  key: 'betfair.key',
+  cert: 'betfair.crt'
+};
+
+betfair.login(auth, function(err, session) {
+  if (err) throw err; // BetfairError with message, exception, code
   session.listMarketCatalogue(params, function(err, markets) {
     if (err) throw err; // BetfairError
     console.log("Got %d markets in %d ms", markets.length, this.duration);
@@ -21,56 +31,58 @@ API
 
 ## Session
 
-`betfairy.Session` has the following properties.
+`betfairy.Session` will have the following public properties when initialized.
 
-* appKey
-* sessionToken
-* locale
-* currency
-* auth
-* options
-* lastInvocationId
+* `appKey` - your application key
+* `appName` - your application name, used at login by Betfair for troubleshooting
+* `sessionToken` - session token, assigned at login or if you have one you can bypass logging in
+* `locale` - locale to use when not specified, two letter code e.g. `en`, `it`
+* `currency` - currency to use when not specified, three letter code e.g. `GBP`, `EUR`
+* `auth` - authentication details to use when logging in
+* `auth.username` - your Betfair account username
+* `auth.password` - your Betfair account password
+* `auth.key` - path to or `Buffer` of your private key file
+* `auth.cert` - path to or `Buffer` of your certificate
+* `auth.pfx` - path to or `Buffer` of the file with your private key and certificate
+* `auth.passphrase` - passphrase if your private key has one
 
 ### Create
 
-You can create a new instance directly:
+You can create a new instance directly
 ```javascript
 var session = new betfairy.Session(options);
 ```
-Or use a helper method:
+or use a helper method
 ```javascript
 var session = betfairy.createSession(options); // aliases: openSession, newSession
 ```
-If you prefer callbacks:
+and you can also use a callback
 ```javascript
 betfairy.createSession(options, function(session) {
     // ...
 });
 ```
 
-`options` values are copied, it is not referenced.
+`options` values are copied. You can have auth details (`username`, `password`, etc.) directly in `options` but they will be in `session.auth`.
 
 ```javascript
 var options = {
   appKey: '123',
-  sessionToken: 'asfasdfasdf134=', // if you have it, you don't need to log in
-  locale: 'en', // it will be used for all api calls that support it
-  currency: 'EUR', // it will be used for all api calls that support it
   username: 'user',
   password: 'pass',
-  vendorSoftwareId: 123, // if you have one
-  productId: 82, // free api
-  locationId: 0
+  key: 'betfair.key', // will become fs.readFileSync('betfair.key')
+  cert: 'betfairy.crt', // will become fs.readFileSync('betfair.crt')
+  sessionToken: 'asfasdfasdf134=', // if you have it, you don't need to log in
+  locale: 'en', // it will be used for all api calls that support it and don't have a value in params
+  currency: 'EUR' // it will be used for all api calls that support it and don't have a value in params
 };
 ```
 
 ### Login
 
-Use `session.login(options [, callback])` to log in. If you already had specified the username and password in `options`, you can use `session.login([callback])`, you can access them with `session.auth`. There's also `session.login(username, password [, vendorSotwareId [, productId [, locationId [, callback]]]])`.
+Use `session.login(options[, callback])` to log in. If you included auth details when creating a session, you can use `session.login([callback])`.
 
-The signature of `callback` is `callback(err, session)`.
-
-If neither `productId` nor `vendorSotwareId` are specified, `productId` will be 82 which will use the Free Betfair API.
+`callback` is `callback(err, session)`.
 
 If you prefer, you can use a convenience method to create a session and login in just one function call:
 
@@ -85,8 +97,8 @@ betfairy.login(options, function(err, session) {
 All Betting API methods are on the `session` object. If you want to be explicit, you can use `session.betting`.
 
 ```javascript
-session.listEvents(function(err, events) { });
-session.betting.listEvents(function(err, events) { });
+session.listEvents(function(err, events) { /* ... */ });
+session.betting.listEvents(function(err, events) { /* ... */ });
 ```
 
 The following methods have been implemented and unit tested:
@@ -129,7 +141,7 @@ session.listMarketCatalogueByMarketIds(marketIds, params,
 
 ### Accounts API
 
-All methods are available on `session` or `session.account`.
+All methods are available on `session` and `session.account`.
 
 The follwing methods have been implemented:
 
@@ -137,6 +149,12 @@ The follwing methods have been implemented:
 * getAccountDetails
 * createDeveloperApp
 * getDeveloperKeys
+
+New or unsupported methods can be called like this:
+
+```javascript
+session.account.invokeMethod('newMethod', params, callback);
+```
 
 ## Invocation
 
@@ -149,34 +167,47 @@ var invocation = session.listEvents(params, function(err, events) {
 console.log(invocation.request);
 ```
 
-Invocation object looks like this:
+Invocation has the following properties:
 
-```javascript
-var invocation = {
-  id: 1, // sequential call id
-  service: 'betting',
-  method: 'listEvents',
-  params: { filter: {} },
-  request: {
-    url: 'https://...',
-    json: { /* ... */ },
-    headers: { /* ... */ },
-  },
-  sent: new Date(),
-  
-  // these are populated when the response is received
-  received: new Date(),
-  duration: 200, // in milliseconds
-  response: { /* ... */ }, // response.body is the returned json
-  responseId: 1, /* should be the same as id */
-  result: [ /* events */ ],
-  error: new betfairy.Error() // if there was an error
-};
-```
+* `id` of the invocation
+* `request` - request that was sent to the API
+* `request.host`, `request.path`, `request.headers`, etc. - request information
+* `request.body` - original request body, can be JSON
+* `request.bodyRaw` - actual serialized request body
+* `request.req` - the underlying `https.ClientRequest` object
+* `request.started` - date right before the request was start being sent
+* `request.finished` - date when sending the request was finished
+* `request.duration` - how long it took to perform the request
+* `request.error` - the error, if there is one, that occured
+* `response` - response from the API
+* `response.statusCode`, `response.headers` - response information
+* `response.body` - parsed response body, can be JSON
+* `response.bodyRaw` - received response body
+* `response.compressed` - whether compression was used
+* `response.compressionRatio` - response length to compressed response length
+* `response.raw` - the underlying `https.IncomingMessage` object
+* `response.started` - date when started receiving response body
+* `response.finished` - date when finished reading response
+* `response.duration` - how long it took to get the response
+* `response.error` - the error, if there is one, that occured
+* `duration` - how long it took to make the API call
+* `error` - the error, if there is one, that occured
+* `result` - result of the api call that is given to the callback
+
+Method invocations also have
+
+* `service.name`, `service.url`, `service.prefix`, `service.version`
+* `method`
+* `params`
+
 
 ## Error Handling
 
-_TODO_
+Callbacks follow the node.js conventions. If the first argument of the callback is not null, then an error had occured. All errors are instances of `betfairy.Error` and can be thrown and will include a stack trace.
+
+`Error` will always have a `message`. If the error was an API exception, it'll have an `exception` with `errorCode` and `errorDetails`. If the error was a JSON-RPC error, it will have a `code`.
+
+Invocations have an `error` property. There are also `request.error` and `response.error`.
 
 MarketMonitor
 -------------

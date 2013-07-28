@@ -101,7 +101,8 @@ class Session
         @error = @response.error = new Error 'No session token', @
         return
       session.sessionToken = @response.body.sessionToken
-      @result = session
+      @result = @response.body.sessionToken if not callback?
+      @result = session if callback?
     invocation.execute callback if callback?
     invocation
 
@@ -305,11 +306,13 @@ class Error
     else if invocation?.response?.body?.error?.data.APINGException?
       @exception = invocation.response.body.error.data.APINGException
       @message = @exception.errorCode + (if @exception.errorDetails? then ': ' + @exception.errorDetails else '')
+      @code = @exception.errorCode
     else if invocation?.response?.body?.error?.code?
       @code = invocation?.response.body.error.code
       @message = invocation?.response.body.error.message
-    else
-      switch invocation?.response?.statusCode
+    else if invocation?.response?.statusCode?
+      @code = invocation.response.statusCode
+      switch invocation.response.statusCode
         when 500 then @message = 'API is down'
         when 404 then @message = 'API method was not found'
         when 400 then @message = 'Bad API request'

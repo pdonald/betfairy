@@ -1,5 +1,5 @@
-http   = require 'request'
-async  = require 'async'
+async        = require 'async'
+{Invocation} = require './invocation'
 
 clone = (obj) ->
   try
@@ -7,9 +7,6 @@ clone = (obj) ->
   catch err
     obj
 
-# TODO: reconnect
-# TODO: parallel requests + timeout/retries
-# TODO: throttling/priorities
 class Session
   services =
     betting: prefix: 'SportsAPING', version: 'v1.0', url: 'https://beta-api.betfair.com/betting/json-rpc'
@@ -21,24 +18,30 @@ class Session
     @appKey       = options?.appKey       ? null
     @appName      = options?.appName      ? null
     @sessionToken = options?.sessionToken ? null
+
     # User preferences for this session
     @locale       = options?.locale       ? null
     @currency     = options?.currency     ? null
 
+    # Connection properties
     @lastInvocationId = 0
+    @throttle = {}
 
-    # Options for this session
-    @options =
-      maxWeightPerRequest: options?.maxWeightPerRequest ? 200
-
+    # Auth details
     if options.auth?
       @auth = options.auth
-    if options.username? or options.password? or options.key? or options.cert?
-      @auth         ?= {}
-      @auth.username = options.username ? null
-      @auth.password = options.password ? null
-      @auth.key      = options.key      ? null
-      @auth.cert     = options.cert     ? null
+    if options.username? or options.password? or options.key? or options.cert? or options.pfx? or options.passphrase?
+      @auth ?= {}
+      @auth.username   = options.username ? null
+      @auth.password   = options.password ? null
+      @auth.key        = options.key        if options.key?
+      @auth.cert       = options.cert       if options.cert?
+      @auth.pfx        = options.pfx        if options.pfx?
+      @auth.passphrase = options.passphrase if options.passphrase?
+
+    # Misc
+    @options =
+      maxWeightPerRequest: options?.maxWeightPerRequest ? 200
 
     # Aliases
     @betting =
@@ -60,33 +63,47 @@ class Session
       invokeMethod: (method, params, callback) => @invokeMethod 'account', method, params, callback
 
   login: () =>
-    login = @auth        if arguments.length is 0 # no arguments, use @auth
-    login = @auth        if arguments.length is 1 and typeof arguments[0] is 'function' # only callback, use @auth
-    login = arguments[0] if arguments.length is 2 # options & callback
+    auth = @auth        if arguments.length is 0 # no arguments, use @auth
+    auth = @auth        if arguments.length is 1 and typeof arguments[0] is 'function' # only callback, use @auth
+    auth = arguments[0] if arguments.length is 2 # options & callback
     callback = arguments[arguments.length - 1] if arguments.length > 0
 
     request =
       url: services.auth
-      strictSSL: true
-      rejectUnauthorized: true
-      key: login?.key ? null
-      cert: login?.cert ? null
-      json: true
+      method: 'POST'
       headers:
         'X-Application': @appName ? ''
-      form:
-        username: login?.username ? ''
-        password: login?.password ? ''
+        'Content-Type': 'application/x-www-form-urlencoded'
+        'Accept': 'application/json'
+      body: 'username=' + encodeURIComponent(auth.username ? '') + '&password=' + encodeURIComponent(auth.password ? '')
+    request.key = auth.key if auth.key?
+    request.cert = auth.cert if auth.cert?
+    request.pfx = auth.pfx if auth.pfx?
+    request.passphrase = auth.passphrase if auth.passphrase?
+    request.agent = false
 
-    http.post request, (err, response, body) =>
-      return callback? new Error err, response: response if err
-      return callback? new Error 'Invalid response', response: response if not body?.loginStatus?
-      return callback? new Error body.loginStatus, response: response if body?.loginStatus isnt 'SUCCESS'
-      return callback? new Error 'Missing sessionToken', response: response if not body?.sessionToken?
-      @sessionToken = body.sessionToken
-      callback? null, @
+    session = @
 
-    @
+    invocation = new Invocation request, ++@lastInvocationId
+    invocation.name = 'LoginInvocation'
+    invocation.auth = auth
+    invocation.processResponse = ->
+      # todo: status code
+      if @error?
+        return
+      if not @response.body?.loginStatus?
+        @error = @response.error = new Error 'Invalid response', @
+        return
+      if @response.body.loginStatus isnt 'SUCCESS'
+        @error = @response.error = new Error @response.body.loginStatus, @
+        return
+      if not @response.body.sessionToken?
+        @error = @response.error = new Error 'No session token', @
+        return
+      session.sessionToken = @response.body.sessionToken
+      @result = session
+    invocation.execute callback if callback?
+    invocation
 
   listEventTypes: (params, callback) =>
     params = clone params
@@ -234,42 +251,35 @@ class Session
     @invokeMethod 'account', 'getDeveloperAppKeys', null, callback
 
   invokeMethod: (service, method, params, callback) =>
-    @lastInvocationId += 1
-    id = @lastInvocationId
-
-    invocation =
-      id: id
-      service: service
-      method: method
-      params: params
-      request:
-        url: services[service].url
-        strictSSL: true
-        rejectUnauthorized: true
-        json:
-          id: id
-          jsonrpc: '2.0'
-          method: services[service].prefix + '/' + services[service].version + '/' + method
-          params: params
-        headers:
-          'X-Application': @appKey
-          'X-Authentication': @sessionToken
-          'Accept': 'application/json'
-      sent: new Date()
-
-    http.post invocation.request, (err, response) ->
-      invocation.received = new Date()
-      invocation.duration = invocation.received - invocation.sent
-      invocation.response = response
-      invocation.responseId = response.body?.id
-      invocation.result = response.body?.result
-
-      if err or response.statusCode isnt 200 or response.body?.error?
-        err = new Error err, invocation
-        invocation.error = err
-
-      callback?.bind?(invocation)(err, invocation.result)
-
+    id = ++@lastInvocationId
+    request =
+      url: services[service].url
+      method: 'POST'
+      headers:
+        'X-Application': @appKey
+        'X-Authentication': @sessionToken
+      body:
+        id: id
+        jsonrpc: '2.0'
+        method: services[service].prefix + '/' + services[service].version + '/' + method
+        params: params
+    invocation = new Invocation request, id
+    invocation.name = 'MethodInvocation'
+    invocation.service = services[service]
+    invocation.service.name = service
+    invocation.method = method
+    invocation.params = params
+    invocation.processResponse = ->
+      if @error?
+        return
+      if @response.body?.error?
+        @error = @response.error = new Error null, @
+        return
+      if not @response.body?.result?
+        @error = @response.error = new Error 'No result', @
+        return
+      @result = @response.body?.result
+    invocation.execute callback.bind(invocation) if callback?
     invocation
 
   # Splits an array into smaller arrays
@@ -292,12 +302,12 @@ class Error
 
     if @error?
       @message = @error + ''
+    else if invocation?.response?.body?.error?.data.APINGException?
+      @exception = invocation.response.body.error.data.APINGException
+      @message = @exception.errorCode + (if @exception.errorDetails? then ': ' + @exception.errorDetails else '')
     else if invocation?.response?.body?.error?.code?
       @code = invocation?.response.body.error.code
       @message = invocation?.response.body.error.message
-    else if invocation?.response?.body?.error?.APINGException?
-      @exception = invocation.response.body.error.APINGException
-      @message = @exception.errorCode + (if @exception.errorDetails? then ': ' + @exception.errorDetails else '')
     else
       switch invocation?.response?.statusCode
         when 500 then @message = 'API is down'

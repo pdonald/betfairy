@@ -6,20 +6,19 @@ describe 'api', ->
   describe 'login', ->
     it 'should work', (done) ->
       session = new betfairy.Session config
-      s = session.login (err, s) ->
+      session.login (err, s) ->
         if err then throw err
         should.not.exist err
         should.exist s
         should.exist s.sessionToken
         s.should.equal session
         done()
-      should.exist s
-      s.should.equal session
 
-    it 'should login with `options`', (done) ->
+    it 'should login with local options', (done) ->
       session = new betfairy.Session appKey: config.appKey
       session.login config, (err) ->
         if err then throw err
+        should.not.exist err
         should.exist session.sessionToken
         done()
 
@@ -37,6 +36,7 @@ describe 'api', ->
     describe 'listEventTypes', ->
       it 'should work', (done) ->
         session.listEventTypes filter: {}, (err, sports) ->
+          if err then throw err
           should.not.exist err
           should.exist sports
           (sport for sport in sports when sport.eventType.name is 'Soccer').should.have.length 1
@@ -51,6 +51,7 @@ describe 'api', ->
       it 'should use locale', (done) ->
         session.locale = 'it'
         session.listEventTypes filter: {}, (err, sports) ->
+          if err then throw err
           should.not.exist err
           should.exist sports
           (sport for sport in sports when sport.eventType.name is 'Calcio').should.have.length 1
@@ -59,6 +60,7 @@ describe 'api', ->
     describe 'listEvents', ->
       it 'should work', (done) ->
         session.listEvents filter: eventTypeIds: [ 2 ], (err, events) ->
+          if err then throw err
           should.not.exist err
           should.exist events
           events.length.should.be.above 0
@@ -76,6 +78,7 @@ describe 'api', ->
     describe 'listCompetitions', ->
       it 'should work', (done) ->
         session.listCompetitions filter: eventTypeIds: [ 1 ], (err, competitions) ->
+          if err then throw err
           should.not.exist err
           should.exist competitions
           competitions.length.should.be.above 0
@@ -89,6 +92,7 @@ describe 'api', ->
     describe 'listCountries', ->
       it 'should work', (done) ->
         session.listCountries filter: eventTypeIds: [ 1 ], (err, countries) ->
+          if err then throw err
           should.not.exist err
           should.exist countries
           countries.length.should.be.above 0
@@ -101,6 +105,7 @@ describe 'api', ->
     describe 'listVenues', ->
       it 'should work', (done) ->
         session.listVenues filter: {}, (err, venues) ->
+          if err then throw err
           should.not.exist err
           should.exist venues
           venues.length.should.be.above 0
@@ -112,6 +117,7 @@ describe 'api', ->
     describe 'listTimeRanges', ->
       it 'should work', (done) ->
         session.listTimeRanges filter: {}, granularity: 'HOURS', (err, ranges) ->
+          if err then throw err
           should.not.exist err
           should.exist ranges
           ranges.length.should.be.above 0
@@ -126,6 +132,7 @@ describe 'api', ->
     describe 'listMarketTypes', ->
       it 'should work', (done) ->
         session.listMarketTypes filter: {}, (err, types) ->
+          if err then throw err
           should.not.exist err
           should.exist types
           types.length.should.be.above 0
@@ -137,6 +144,7 @@ describe 'api', ->
 
       it 'should use locale but have no effect', (done) ->
         session.listMarketTypes filter: {}, locale: 'it', (err, types) ->
+          if err then throw err
           should.not.exist err
           should.exist types
           (type for type in types when type.marketType is 'MATCH_ODDS').should.have.length 1
@@ -154,31 +162,35 @@ describe 'api', ->
 
       it 'should work', (done) ->
         session.listMarketCatalogue params, (err, markets) ->
+          if err then throw err
           should.not.exist err
           should.exist markets
           markets.should.be.an.instanceOf Array
           markets.should.have.length 10
-          market.marketName.should.equal 'Match Odds' for market in markets
+          market.marketName.should.include 'Match Odds' for market in markets
           done()
 
       it 'should use locale', (done) ->
         session.locale = 'it'
         session.listMarketCatalogue params, (err, markets) ->
-          market.marketName.should.equal 'Esito Finale' for market in markets
+          if err then throw err
+          market.marketName.should.include 'Esito Finale' for market in markets
           done()
 
       it 'should use prefer params locale over session locale', (done) ->
         session.locale = 'it'
         params.locale = 'es'
         session.listMarketCatalogue params, (err, markets) ->
-          market.marketName.should.equal 'Cuotas de partido' for market in markets
+          if err then throw err
+          market.marketName.should.include 'Cuotas de partido' for market in markets
           done()
 
       it 'should not modify params', (done) ->
         params.locale = 'es'
         origParams = JSON.stringify params
         session.listMarketCatalogue params, (err, markets) ->
-          market.marketName.should.equal 'Cuotas de partido' for market in markets
+          if err then throw err
+          market.marketName.should.include 'Cuotas de partido' for market in markets
           origParams.should.equal JSON.stringify params
           done()
 
@@ -192,6 +204,7 @@ describe 'api', ->
     describe 'getAccountFunds', ->
       it 'should work', (done) ->
         session.getAccountFunds (err, funds) ->
+          if err then throw err
           should.not.exist err
           should.exist funds
           should.exist funds.availableToBetBalance
@@ -207,6 +220,7 @@ describe 'api', ->
     describe 'getAccountDetails', ->
       it 'should work', (done) ->
         session.getAccountDetails (err, details) ->
+          if err then throw err
           should.not.exist err
           should.exist details
           should.exist details.currencyCode
@@ -224,6 +238,7 @@ describe 'api', ->
     describe 'getDeveloperAppKeys', ->
       it 'should work', (done) ->
         session.getDeveloperAppKeys (err, apps) ->
+          if err then throw err
           should.not.exist err
           should.exist apps
           done()
@@ -243,38 +258,59 @@ describe 'api', ->
 
     it 'should return invocation', (done) ->
       invocation = session.listMarketCatalogue params, (err, markets) ->
+        if err then throw err
         should.not.exist err
+        should.not.exist invocation.error
         should.exist invocation.service
         should.exist invocation.method
         should.exist invocation.params
         invocation.params.should.eql params
         should.exist invocation.request
         should.exist invocation.response
-        should.exist invocation.sent
-        should.exist invocation.received
         should.exist invocation.duration
         should.not.exist invocation.error
         should.exist invocation.result
-        invocation.result.should.eql markets
+        invocation.result.should.equal markets
         done()
 
     it 'should bind invocation to this', (done) ->
       session.listMarketCatalogue params, (err) ->
+        if err then throw err
         should.not.exist err
         should.exist @duration
         done()
+
+    it 'should not be excuted if there is no callback', (done) ->
+      invocation = session.listMarketCatalogue params
+      should.exist invocation
+      should.exist invocation.request
+      should.exist invocation.params
+      invocation.params.should.eql params
+      should.not.exist invocation.response
+      setTimeout (->
+        should.not.exist invocation.response
+        invocation.execute (err, result) ->
+          if err then throw err
+          should.not.exist err
+          should.not.exist invocation.error
+          should.exist invocation.response
+          should.exist invocation.result
+          invocation.result.should.equal result
+          done()
+      ), 500
 
     it 'should increase call id', (done) ->
       count = 3
       prev = null
       [1..count].forEach ->
         inv = session.listMarketCatalogue params, (err) ->
+          if err then throw err
           should.not.exist err
           should.exist @id
-          should.exist @responseId
-          @id.should.equal @responseId
+          should.exist @response.body.id
+          @id.should.equal @response.body.id
           inv.id.should.equal @id
-          inv.id.should.equal @responseId
+          inv.id.should.equal @response.body.id
           count--
           done() if count is 0
 

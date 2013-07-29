@@ -3,6 +3,17 @@ Betfair API-NG
 
 Betfair API-NG node.js module. betfairy should be pronounced as bet fairy.
 
+**Features**
+
+* error handling
+* validates parameters (todo)
+* statistics and debug information about API calls
+* throttling, parallel requests, timeouts, retrying, reconnecting (todo)
+* batches multiple API calls
+* fluent API (todo)
+* utilities for common tasks
+* unit tested (todo)
+
 Quick start
 -----------
 

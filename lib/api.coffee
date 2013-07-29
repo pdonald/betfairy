@@ -1,4 +1,6 @@
 async        = require 'async'
+fs           = require 'fs'
+{Buffer}     = require 'buffer'
 {Invocation} = require './invocation'
 
 clone = (obj) ->
@@ -76,10 +78,10 @@ class Session
         'Content-Type': 'application/x-www-form-urlencoded'
         'Accept': 'application/json'
       body: 'username=' + encodeURIComponent(auth.username ? '') + '&password=' + encodeURIComponent(auth.password ? '')
-    request.key = auth.key if auth.key?
-    request.cert = auth.cert if auth.cert?
-    request.pfx = auth.pfx if auth.pfx?
-    request.passphrase = auth.passphrase if auth.passphrase?
+    if auth.key?  then request.key  = (if Buffer.isBuffer auth.key  then auth.key  else fs.readFileSync auth.key)
+    if auth.cert? then request.cert = (if Buffer.isBuffer auth.cert then auth.cert else fs.readFileSync auth.cert)
+    if auth.pfx?  then request.pfx  = (if Buffer.isBuffer auth.pfx  then auth.pfx  else fs.readFileSync auth.pfx)
+    if auth.passphrase? then request.passphrase = auth.passphrase
     request.agent = false
 
     session = @

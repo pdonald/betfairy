@@ -4,6 +4,10 @@ config   = require './config'
 
 describe 'api', ->
   describe 'login', ->
+    orig = config
+
+    beforeEach -> config = JSON.parse JSON.stringify orig
+
     it 'should work', (done) ->
       session = new betfairy.Session config
       session.login (err, s) ->
@@ -19,6 +23,59 @@ describe 'api', ->
       session.login config, (err) ->
         if err then throw err
         should.not.exist err
+        should.exist session.sessionToken
+        done()
+
+    it 'should work with auth key & cert paths', (done) ->
+      config.key.should.be.a 'string'
+      config.cert.should.be.a 'string'
+      delete config.pfx
+      should.not.exist config.pfx
+
+      session = new betfairy.Session config
+      session.login (err) ->
+        if err then throw err
+        should.exist session.sessionToken
+        done()
+
+    it 'should work with auth key & cert buffers', (done) ->
+      config.key.should.be.a 'string'
+      config.cert.should.be.a 'string'
+      config.key = require('fs').readFileSync config.key
+      config.cert = require('fs').readFileSync config.cert
+      delete config.pfx
+      should.not.exist config.pfx
+
+      session = new betfairy.Session config
+      session.login (err) ->
+        if err then throw err
+        should.exist session.sessionToken
+        done()
+
+    it 'should work with auth pfx path', (done) ->
+      delete config.key
+      delete config.cert
+      should.not.exist config.key
+      should.not.exist config.cert
+      config.pfx.should.be.a 'string'
+
+      session = new betfairy.Session config
+      session.login (err) ->
+        if err then throw err
+        should.exist session.sessionToken
+        done()
+
+    it 'should work with auth pfx buffer', (done) ->
+      delete config.key
+      delete config.cert
+      should.not.exist config.key
+      should.not.exist config.cert
+      config.pfx.should.be.a 'string'
+      config.pfx = require('fs').readFileSync config.pfx
+
+      session = new betfairy.Session config
+      session.login (err) ->
+        if err then throw err
         should.exist session.sessionToken
         done()
 

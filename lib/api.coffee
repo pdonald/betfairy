@@ -9,8 +9,8 @@ clone = (obj) ->
 
 class Session
   services =
-    betting: prefix: 'SportsAPING', version: 'v1.0', url: 'https://beta-api.betfair.com/betting/json-rpc'
-    account: prefix: 'AccountAPING', version: 'v1.0', url: 'https://beta-api.betfair.com/account/json-rpc'
+    betting: prefix: 'SportsAPING', version: 'v1.0', url: 'https://api.betfair.com/exchange/betting/json-rpc/v1'
+    account: prefix: 'AccountAPING', version: 'v1.0', url: 'https://api.betfair.com/exchange/account/json-rpc/v1'
     auth: 'https://identitysso-api.betfair.com/api/certlogin'
 
   constructor: (options) ->
@@ -303,7 +303,7 @@ class Error
 
     if @error?
       @message = @error + ''
-    else if invocation?.response?.body?.error?.data.APINGException?
+    else if invocation?.response?.body?.error?.data?.APINGException?
       @exception = invocation.response.body.error.data.APINGException
       @message = @exception.errorCode + (if @exception.errorDetails? then ': ' + @exception.errorDetails else '')
       @code = @exception.errorCode

@@ -275,13 +275,13 @@ class Session
     invocation.processResponse = ->
       if @error?
         return
-      if @response.body?.error?
+      if @response?.body?.error?
         @error = @response.error = new Error null, @
         return
-      if not @response.body?.result?
+      if not @response?.body?.result?
         @error = @response.error = new Error 'No result', @
         return
-      @result = @response.body?.result
+      @result = @response?.body?.result
     invocation.execute callback.bind(invocation) if callback?
     invocation
 

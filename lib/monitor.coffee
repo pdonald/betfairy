@@ -45,11 +45,13 @@ class MarketMonitor extends events.EventEmitter
     if interval is 0 or (interval > 0 and (not @status.updated or timeSinceLastUpdate >= interval))
       if not @status.loading
         @status.loading = true
-        @load()
+        @load =>
+          @status.updated = new Date()
+          @status.loading = false
       else
         @emit 'debug:loop', 'Skipping fetching markets because loading already in progress'
     else
-      @emit 'debug:loop', "Skipping fetching markets: interval: #{interval}, since last update: #{timeSinceLastUpdate}, update in: #{interval-timeSinceLastUpdate}"
+      @emit 'debug:loop', "Skipping fetching markets: interval: #{interval}, since last update: #{(if @status.updated? then timeSinceLastUpdate else '-')}, update in: #{(if @status.updated? then interval-timeSinceLastUpdate else '-')}"
 
     # Get prices
     groups = {}
@@ -61,8 +63,12 @@ class MarketMonitor extends events.EventEmitter
 
     for sub, marketIds of groups
       params = @subscriptions[marketIds[0]].params
-      @emit 'debug:loop', "Fetching prices for #{marketIds.length} markets"
-      @loadPrices marketIds, params
+      @emit 'debug:loop', "Fetching prices for #{marketIds.length} markets", params
+      do (marketIds) =>
+        @subscriptions[marketId].loading = true for marketId in marketIds # mark them as loading
+        completed = => @subscriptions[marketId].loading = false for marketId in marketIds
+        partial = (err) => if not err then @subscriptions[marketId].updated = new Date() for marketId in marketIds
+        @loadPrices marketIds, params, completed, partial
     @
 
   subscribe: (market, interval, params, callback) =>
@@ -104,14 +110,14 @@ class MarketMonitor extends events.EventEmitter
     @
 
   unsubscribe: (market) =>
-    marketId = market?.marketId? ? market
+    marketId = market?.marketId ? market
     if @subscriptions[marketId]?
       @emit 'unsubscribe', marketId, @subscriptions[marketId]
       delete @subscriptions[marketId]
     @
 
   ignore: (market) =>
-    marketId = market?.marketId? ? market
+    marketId = market?.marketId ? market
     @unsubscribe marketId
     @emit 'ignore', marketId
     delete @markets[marketId]
@@ -185,18 +191,12 @@ class MarketMonitor extends events.EventEmitter
         for marketId in removedMarketIds
           @emit 'remove', @markets[marketId], marketId
 
-        @status.updated = new Date()
         callback? null, @markets, newMarketIds, removedMarketIds
         @timerLoop() if @timer?
 
-  loadPrices: (markets, params, callback) =>
+  loadPrices: (markets, params, callback, partialCallback) =>
     # markets can be an array of market or an array of ids
     marketIds = ((if market.marketId? then market.marketId else market) for market in markets)
-    # filter out the markets that are being updated right now
-    marketIds = (marketId for marketId in marketIds when not @subscriptions[marketId].loading and not @ignored[marketId]?)
-    # mark them as loading
-    for marketId in marketIds
-      @subscriptions[marketId].loading = true
 
     partial = (err, markets) =>
       # todo: stop() was called
@@ -205,14 +205,15 @@ class MarketMonitor extends events.EventEmitter
         #return
       if err
         @emit 'error', err
+        partialCallback? err
         return
 
       @emit 'debug', "Fetched prices (partial) for #{markets.length} markets"
 
-      for marketPrices in markets
+      partialCallback? null, markets
+
+      for marketPrices in markets when @markets[marketPrices.marketId]?
         marketId = marketPrices.marketId
-        @subscriptions[marketId].updated = new Date()
-        @subscriptions[marketId].loading = false
         prevPrices = @markets[marketId].prices
         @markets[marketId].prices = marketPrices
         @emit 'update', @markets[marketId].prices, prevPrices, @markets[marketId], @subscriptions[marketId]
@@ -222,10 +223,12 @@ class MarketMonitor extends events.EventEmitter
       if err
         @emit 'error', err
         callback? err, markets
+        @timerLoop() if @timer?
         return
 
       @emit 'debug', "Fetched prices for #{markets.length} markets"
       callback? null, markets
+      @timerLoop() if @timer?
 
     @session.listMarketBookAll marketIds, params, completed, partial
     @

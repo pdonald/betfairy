@@ -66,8 +66,8 @@ class MarketMonitor extends events.EventEmitter
       @emit 'debug:loop', "Fetching prices for #{marketIds.length} markets", params
       do (marketIds) =>
         @subscriptions[marketId].loading = true for marketId in marketIds # mark them as loading
-        completed = => @subscriptions[marketId].loading = false for marketId in marketIds
-        partial = (err) => if not err then @subscriptions[marketId].updated = new Date() for marketId in marketIds
+        completed = => @subscriptions[marketId].loading = false for marketId in marketIds when @subscriptions[marketId]?
+        partial = (err) => if not err then @subscriptions[marketId].updated = new Date() for marketId in marketIds when @subscriptions[marketId]?
         @loadPrices marketIds, params, completed, partial
     @
 

@@ -1,9 +1,9 @@
 async        = require 'async'
 fs           = require 'fs'
-{Buffer}     = require 'buffer'
 {Invocation} = require './invocation'
 
 clone = (obj) ->
+  # todo
   try
     JSON.parse JSON.stringify obj
   catch err
@@ -105,7 +105,7 @@ class Session
       session.sessionToken = @response.body.sessionToken
       @result = @response.body.sessionToken if not callback?
       @result = session if callback?
-    invocation.execute callback if callback?
+    invocation.execute if callback? then callback else (->)
     invocation
 
   listEventTypes: (params, callback) =>
@@ -310,8 +310,14 @@ class Error
       @message = @exception.errorCode + (if @exception.errorDetails? then ': ' + @exception.errorDetails else '')
       @code = @exception.errorCode
     else if invocation?.response?.body?.error?.code?
-      @code = invocation?.response.body.error.code
-      @message = invocation?.response.body.error.message
+      @code = invocation.response.body.error.code
+      @message = invocation.response.body.error.message
+      if not @message?
+        switch @code
+          when -32700 then @message = 'Invalid JSON was received by the server. An error occurred on the server while parsing the JSON text.'
+          when -32601 then @message = 'Method not found'
+          when -32602 then @message = 'Problem parsing the parameters, or a mandatory parameter was not found'
+          when -32603 then @message = 'Internal JSON-RPC error'
     else if invocation?.response?.statusCode?
       @code = invocation.response.statusCode
       switch invocation.response.statusCode

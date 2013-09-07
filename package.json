@@ -18,7 +18,7 @@
     "async"      :  "*"
   },
   "devDependencies" : {
-    "coffee-script" : "*",
+    "coffee-script" : "git://github.com/jashkenas/coffee-script.git#40c1086efae631f71d7045ca0a5c48090342f685",
     "mocha"         : "*",
     "should"        : "*"
   },

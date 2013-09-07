@@ -9,9 +9,9 @@ params =
 
 leagues = {}
 
-session = new betfairy.Session config
-session.login (err) ->
+betfairy.login config, (err, session) ->
   if err then throw err
+
   session.listMarketCatalogueAll params, (err, markets) ->
     if err then throw err
 
@@ -27,5 +27,5 @@ session.login (err) ->
         continue if selection.runnerName is 'The Draw' # ignore draw
         league.selections[selection.selectionId] = selection.runnerName
 
-    console.log "Got everything in " + @length + " api calls"
+    #console.log "Got everything in " + @length + " api calls"
     console.log leagues

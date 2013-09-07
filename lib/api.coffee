@@ -105,7 +105,7 @@ class Session
       session.sessionToken = @response.body.sessionToken
       @result = @response.body.sessionToken if not callback?
       @result = session if callback?
-    invocation.execute if callback? then callback else (->)
+    invocation.execute if callback? then callback.bind(invocation) else (->)
     invocation
 
   listEventTypes: (params, callback) =>
@@ -147,49 +147,74 @@ class Session
     params.locale ?= @locale if @locale?
     @invokeMethod 'betting', 'listMarketCatalogue', params, callback
 
-  listMarketCatalogueByMarketIds: (marketIds, params, doneCallback, eachCallback) =>
-    params = clone params
-
-    # All markets that were loaded by this function
-    # It will be passed to the callback
-    loadedMarkets = []
-
+  listMarketCatalogueAll: (params, doneCallback, eachCallback) =>
     # Calculate the weight of marketProjection
     weight  = 0
-    weight += 2 if 'RUNNER_DESCRIPTION' in params.marketProjection
-    weight += 2 if 'RUNNER_METADATA'    in params.marketProjection
-    weight += 3 if 'MARKET_DESCRIPTION' in params.marketProjection
+    if params.marketProjection?
+      weight += 2 if 'RUNNER_DESCRIPTION' in params.marketProjection
+      weight += 2 if 'RUNNER_METADATA'    in params.marketProjection
+      weight += 3 if 'MARKET_DESCRIPTION' in params.marketProjection
 
     # How many markets we can retrieve in one request
-    marketsPerRequest = Math.floor @options.maxWeightPerRequest / weight
+    marketsPerRequest = if weight > 0 then Math.floor @options.maxWeightPerRequest / weight else 1000
 
-    # Split all marketId's into chunks so that the weight of each chunk is less than
-    # the maximum allowed weight per one request
-    chunks = splitIntoChunks marketIds, marketsPerRequest
+    # API calls that will be made
+    invocations = []
+    invocations.marketsPerRequest = marketsPerRequest
+    invocations.weightPerRequest = weight
+    invocations.maxWeightPerRequest = @options.maxWeightPerRequest
 
-    loadChunk = (ids, done) =>
-      params.filter = marketIds: ids
-      params.maxResults = marketsPerRequest
+    # All markets that will be returned
+    loadedMarkets = []
 
-      @listMarketCatalogue params, (err, markets) =>
-        if err
-          eachCallback?.apply @, Array.prototype.slice.call arguments
-          done arguments # Tell async that we've finished loading this chunk with an error
-          return
-        loadedMarkets.push market for market in markets
-        eachCallback? null, markets
-        done() # Tell async that we've finished loading this chunk
+    load = (filters) =>
+      async.forEachLimit filters, 5, partial, (err) =>
+        invocations.requests = invocations.length
+        invocations.minPossibleRequests = Math.ceil loadedMarkets.length / marketsPerRequest
+        invocations.overhead = invocations.requests - invocations.minPossibleRequests
+        doneCallback?.call invocations, err, loadedMarkets
 
-    # Report all loaded markets or errors when we're done
-    done = (err) =>
-      if err
-        doneCallback.apply @, Array.prototype.slice.call err # err is all arguments from @listMarketCatalogue
-      else
-        doneCallback null, loadedMarkets
+    partial = (filter, done) =>
+      p = clone params
+      p.filter[key] = value for key, value of filter
+      p.maxResults = marketsPerRequest
 
-    # Load all chunks, 5 at a time
-    async.forEachLimit chunks, 5, loadChunk, done
-    @
+      invocations.push @listMarketCatalogue p, (err, markets) =>
+        eachCallback?.call @, err, markets
+        loadedMarkets.push market for market in markets if not err
+        done err
+
+    if params.maxResults <= marketsPerRequest
+      # Everything fits in one request
+      load [ params.filter ]
+    else if params.filter?.marketIds?.length > 0
+      # Split all marketIds into several requests
+      load splitIntoChunks(params.filter.marketIds, marketsPerRequest).map (ids) -> marketIds: ids
+    else
+      invocations.push @listEvents params, (err, events) =>
+        if err then return doneCallback?.call invocations, err
+
+        # Sort events by market count in an ascending order
+        events.sort (a, b) -> a.marketCount - b.marketCount
+        # Split all events with at most marketsPerRequests markets in one request
+        chunks = []
+        chunk = []
+        chunkMarketCount = 0
+        for event in events
+          # todo: if event.marketCount > marketsPerRequest
+          if event.marketCount > marketsPerRequest
+            doneCallback?.call invocations, 'Too many markets in one event, this is not implemented yet'
+            return
+          if chunkMarketCount + event.marketCount > marketsPerRequest
+            chunks.push chunk
+            chunk = []
+            chunkMarketCount = 0
+          chunkMarketCount += event.marketCount
+          chunk.push event.event.id
+        chunks.push chunk
+
+        load chunks.map (ids) -> eventIds: ids
+    invocations
 
   listMarketBook: (params, callback) =>
     params = clone params
@@ -212,7 +237,7 @@ class Session
     weight += 3  if 'SP_AVAILABLE'   in params?.priceProjection?.priceData
 
     # How many markets we can retrieve in one request
-    marketsPerRequest = Math.floor @options.maxWeightPerRequest / weight
+    marketsPerRequest = Math.floor @options.maxWeightPerRequest / weight # todo: weight = 0
 
     # Split all marketId's into chunks so that the weight of each chunk is less than
     # the maximum allowed weight per one request

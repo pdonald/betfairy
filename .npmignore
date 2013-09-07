@@ -1,0 +1,4 @@
+lib/*.coffee
+examples/
+test/
+config.coffee

@@ -1,6 +1,6 @@
-api     = require './lib/api'
-fluent  = require './lib/fluent'
-monitor = require './lib/monitor'
+api     = require './api'
+fluent  = require './fluent'
+monitor = require './monitor'
 
 exports.Session       = api.Session
 exports.Error         = api.Error

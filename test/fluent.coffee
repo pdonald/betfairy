@@ -1,6 +1,6 @@
 should   = require 'should'
-betfairy = require '../index'
-config   = require './config'
+betfairy = require '..'
+config   = require '../config'
 
 describe 'fluent', ->
   fluent = null

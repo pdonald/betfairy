@@ -3,7 +3,7 @@
   "version": "1.0.0-dev",
   "author": "Pēteris Ņikiforovs <p@mak.id.lv>",
   "description": "Betfair API-NG",
-  "main": "./index",
+  "main": "lib/index",
   "repository": {
     "type": "git",
     "url": "https://github.com/pdonald/betfairy.git"
@@ -23,7 +23,8 @@
     "should"        : "*"
   },
   "scripts": {
-    "test": "mocha --compilers coffee:coffee-script --reporter spec --timeout 2000"
+    "test": "mocha --compilers coffee:coffee-script --reporter spec --timeout 2000",
+    "prepublish": "coffee -c lib/"
   },
   "license": "MIT",
   "engines": {

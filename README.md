@@ -1,21 +1,10 @@
-Betfair API-NG
-==============
+# Betfair API-NG
 
-Betfair API-NG node.js module. betfairy should be pronounced as bet fairy.
+Betfair API-NG node.js module.
 
-**Features**
+betfairy is pronounced as bet fairy.
 
-* error handling
-* validates parameters (todo)
-* statistics and debug information about API calls
-* throttling, parallel requests, timeouts, retrying, reconnecting (todo)
-* batches multiple API calls
-* fluent API (todo)
-* utilities for common tasks
-* unit tested (todo)
-
-Quick start
------------
+## Quick start
 
 ```javascript
 var betfair = require('betfairy');
@@ -28,7 +17,14 @@ var auth = {
   cert: 'betfair.crt'
 };
 
-betfair.login(auth, function(err, session) {
+var params = {
+  filter: { eventTypeIds: [ 1 /* Soccer */ ], marketTypeCodes: [ 'MATCH_ODDS' ] },
+  marketProjection: [ 'EVENT', 'COMPETITION' ],
+  sort: 'FIRST_TO_START',
+  maxResults: 100
+};
+
+betfair.login(auth, function(err) {
   if (err) throw err; // BetfairError with message, exception, code
   session.listMarketCatalogue(params, function(err, markets) {
     if (err) throw err; // BetfairError
@@ -37,10 +33,19 @@ betfair.login(auth, function(err, session) {
 });
 ```
 
-API
----
+## Features
 
-## Session
+- [error handling](#error-handling)
+- [statistics and debug information about API calls](#invocation)
+- [fluent API](#fluent-api)
+- [utilities for common tasks](#extensions)
+- unit tests
+
+JSON-RPC is used. Currently only read-only methods have been implemented.
+
+## API
+
+### Session
 
 `betfairy.Session` will have the following public properties when initialized.
 
@@ -57,17 +62,22 @@ API
 * `auth.pfx` - path to or `Buffer` of the file with your private key and certificate
 * `auth.passphrase` - passphrase if your private key has one
 
-### Create
+#### Create
 
 You can create a new instance directly
+
 ```javascript
 var session = new betfairy.Session(options);
 ```
+
 or use a helper method
+
 ```javascript
 var session = betfairy.createSession(options); // aliases: openSession, newSession
 ```
+
 and you can also use a callback
+
 ```javascript
 betfairy.createSession(options, function(session) {
     // ...
@@ -78,6 +88,7 @@ betfairy.createSession(options, function(session) {
 
 ```javascript
 var options = {
+  appName: 'bot',
   appKey: '123',
   username: 'user',
   password: 'pass',
@@ -89,7 +100,7 @@ var options = {
 };
 ```
 
-### Login
+#### Login
 
 Use `session.login(options[, callback])` to log in. If you included auth details when creating a session, you can use `session.login([callback])`.
 
@@ -132,24 +143,6 @@ New or unsupported methods can be called like this:
 session.betting.invokeMethod('newMethod', params, callback);
 ```
 
-There is a limit of how much information you can request. If the request weight is higher than 200, you will get an error. You can use the non-API method `listMarketCatalogueByMarketIds` to load information about many markets in one function call that will batch market ids and issue multiple requests so that they never exceed the max weight.
-
-```javascript
-var marketIds = [ '1.123', '1.456', ... ]; // lots of them
-
-var params = {
-  filter: {
-    eventTypeIds: [ 1 ],
-    marketTypeCodes: [ 'MATCH_ODDS' ],
-  },
-  marketProjection: [ 'COMPETITION', 'EVENT', 'EVENT_TYPE', 'MARKET_START_TIME', 'MARKET_DESCRIPTION', 'RUNNER_DESCRIPTION' ]
-};
-
-session.listMarketCatalogueByMarketIds(marketIds, params,
-  function done(err, markets) { console.log("Got %d markets", markets.length); },
-  function partial(err, markets) { console.log("Got %d out of %d markets", markets.length, marketIds.length); });
-```
-
 ### Accounts API
 
 All methods are available on `session` and `session.account`.
@@ -167,7 +160,7 @@ New or unsupported methods can be called like this:
 session.account.invokeMethod('newMethod', params, callback);
 ```
 
-## Invocation
+### Invocation
 
 Each API method returns an invocation object. You can use it to debug the API call. It's also bound to the callback function as `this`.
 
@@ -212,7 +205,7 @@ Method invocations also have
 * `params`
 
 
-## Error Handling
+### Error handling
 
 Callbacks follow the node.js conventions. If the first argument of the callback is not null, then an error had occured. All errors are instances of `betfairy.Error` and can be thrown and will include a stack trace.
 
@@ -220,8 +213,87 @@ Callbacks follow the node.js conventions. If the first argument of the callback 
 
 Invocations have an `error` property. There are also `request.error` and `response.error`.
 
-MarketMonitor
--------------
+## Fluent API
+
+Betfair API is very ugly. Fluent API tries to solve this problem.
+
+Instead of this
+
+```javascript
+session.listEvents(params, function(err, events) {
+  if (err) throw err; // error handling
+  events.forEach(function(event) {
+    console.log(event.event.name + " starts at " + new Date(event.event.openDate)); // event.event.name <- ugly
+  });
+});
+```
+
+you can code like this
+
+```javascript
+var fluent = session.fluent();
+
+fluent.events(filter, function(events) { // no err
+  events.forEach(function(event) {
+    console.log(event.name + " starts at " + event.openDate); // short and sweet
+  });
+});
+
+fluent.on('error', function(err) {
+  throw err; // error handling for all methods
+});
+
+fluent.on('invocation', function(inv) { // not implemented
+  if (inv.method) {
+    console.log(inv.method + ' took ' + inv.duration + ' ms'); // collect statistics for all api calls
+  }
+});
+```
+
+The following methods have been implemented and unit tested:
+
+* `sports` (`listEventTypes`)
+* `events` (`listEvents`
+* `events.types` (`listEventTypes`)
+* `competitions` (`listCompetitions`)
+* `countries` (`listCountries`)
+* `venues` (`listVenues`)
+* `markets.types` (`listMarketTypes`)
+
+## Extensions
+
+## `listMarketCatalogueAll` and `listMarketBookAll`
+
+There are limits on the amount of data requested in one request for `listMarketCatalogue` and `listMarketBook`.
+You can read more about it [in the documentation](https://api.developer.betfair.com/services/webapps/docs/display/1smk3cen4v3lu3yomq5qye0ni/Market+Data+Request+Limits)
+
+You can use the non-API method `listMarketCatalogueAll` to load information about many markets and not worry about exceeding limits.
+
+```javascript
+var params = {
+  filter: {
+    eventTypeIds: [ 1 ],
+    marketTypeCodes: [ 'MATCH_ODDS' ],
+  },
+  marketProjection: [ 'COMPETITION', 'EVENT', 'EVENT_TYPE', 'MARKET_START_TIME', 'MARKET_DESCRIPTION', 'RUNNER_DESCRIPTION' ]
+};
+
+session.listMarketCatalogueAll(params,
+  function done(err, markets) { console.log("Finished: got %d markets in %d requests", markets.length, this.requests); },
+  function partial(err, markets) { console.log("Got %d markets", markets.length); });
+```
+
+Similarly `listMarketBookAll` will make sure that the limits are not exceeded when fetching prices for many markets.
+
+### MarketMonitor
+
+The idea behind MarketMonitor is that it periodically monitors Betfair for new markets
+(e.g. soccer matches that start in the next 24 hours) and when a new market is added,
+you can subscribe to it and the prices for these markets will be periodically updated.
+If you have subscribed to many similar markets (i.e. all are MATCH_ODDS and updated every 2 seconds),
+then MarketMonitor will batch all updates in one API call.
+
+This example is out of date. See `lib/monitor.coffee` for details.
 
 ```javascript
 session.login('user', 'pass', function(err) {
@@ -257,3 +329,15 @@ function monitorMarkets(session) {
   mgr.start()
 }
 ```
+
+## TODO
+
+- bet placement methods
+- fluent api for filter
+- fluent api for returned results (markets, prices)
+- params & filter validation
+- throttling, parallel requests, timeouts, retrying, reconnecting
+- replay
+- simulator
+- create login cert
+- create api key

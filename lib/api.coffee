@@ -222,7 +222,7 @@ class Session
     params.currencyCode ?= @currency if @currency?
     @invokeMethod 'betting', 'listMarketBook', params, callback
 
-  listMarketBookAll: (marketIds, params, doneCallback, eachCallback) =>
+  listMarketBookAll: (params, doneCallback, eachCallback) =>
     params = clone params
 
     # Loaded markets
@@ -241,7 +241,7 @@ class Session
 
     # Split all marketId's into chunks so that the weight of each chunk is less than
     # the maximum allowed weight per one request
-    chunks = splitIntoChunks marketIds, marketsPerRequest
+    chunks = splitIntoChunks params.marketIds, marketsPerRequest
 
     loadChunk = (ids, done) =>
       params.marketIds = ids

@@ -16,18 +16,20 @@ class Session
     auth: 'https://identitysso-api.betfair.com/api/certlogin'
 
   constructor: (options) ->
+    # Default options
+    options ?= {}
+    
     # Properties that describe the session
-    @appKey       = options?.appKey       ? null
-    @appName      = options?.appName      ? null
-    @sessionToken = options?.sessionToken ? null
+    @appKey       = options.appKey       ? null
+    @appName      = options.appName      ? null
+    @sessionToken = options.sessionToken ? null
 
     # User preferences for this session
-    @locale       = options?.locale       ? null
-    @currency     = options?.currency     ? null
+    @locale       = options.locale       ? null
+    @currency     = options.currency     ? null
 
     # Connection properties
     @lastInvocationId = 0
-    @throttle = {}
 
     # Auth details
     if options.auth?
@@ -43,7 +45,7 @@ class Session
 
     # Misc
     @options =
-      maxWeightPerRequest: options?.maxWeightPerRequest ? 200
+      maxWeightPerRequest: options.maxWeightPerRequest ? 200
 
     # Aliases
     @betting =
@@ -68,7 +70,7 @@ class Session
     auth = @auth        if arguments.length is 0 # no arguments, use @auth
     auth = @auth        if arguments.length is 1 and typeof arguments[0] is 'function' # only callback, use @auth
     auth = arguments[0] if arguments.length is 2 # options & callback
-    callback = arguments[arguments.length - 1] if arguments.length > 0
+    callback = arguments[arguments.length - 1] if arguments.length > 0 # last argument
 
     request =
       url: services.auth
@@ -291,6 +293,21 @@ class Session
 
     invocations
 
+  listCurrentOrders: (params, callback) =>
+    @invokeMethod 'betting', 'listCurrentOrders', params, callback
+
+  placeOrders: (params, callback) =>
+    @invokeMethod 'betting', 'placeOrders', params, callback
+
+  cancelOrders: (params, callback) =>
+    @invokeMethod 'betting', 'cancelOrders', params, callback
+
+  updateOrders: (params, callback) =>
+    @invokeMethod 'betting', 'updateOrders', params, callback
+
+  replaceOrders: (params, callback) =>
+    @invokeMethod 'betting', 'replaceOrders', params, callback
+
   getAccountFunds: (callback) =>
     @invokeMethod 'account', 'getAccountFunds', null, callback
 
@@ -347,9 +364,9 @@ class Session
 
 class Error
   constructor: (@error, invocation) ->
-    this.constructor.prototype.__proto__ = global.Error.prototype
+    @constructor.prototype.__proto__ = global.Error.prototype
     global.Error.call @
-    global.Error.captureStackTrace this, this.constructor
+    global.Error.captureStackTrace @, @constructor
 
     @name = 'BetfairError'
 

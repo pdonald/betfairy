@@ -137,49 +137,59 @@ class MarketMonitor extends events.EventEmitter
       clearInterval @timer
       @timer = null
       @emit 'debug', 'Stopped'
+    else
+      @emit 'debug', 'Stopped, but was not running'
     @
 
   load: (callback) =>
     params =
       filter: @options.filter?() ? @options.filter ? {}
       marketProjection: [] # marketId, marketName
-      maxResults: 1000 # TODO: detect if there's more
 
-    @emit 'debug', "Loading markets (id's)", params
+    @emit 'debug', "Loading markets (IDs)", params
     # First, get just marketId (and also marketName)
-    @session.listMarketCatalogue params, (err, markets) =>
+    @session.listMarketCatalogueAll params, (err, markets) =>
       # stop() was called
       if not @timer? and @status.loading
-        @emit 'debug', "Aborting load markets (id's) because the instance was stopped"
+        @emit 'debug', "Aborting load markets (IDs) because the instance was stopped" # todo: handle in loop?
         return
       if err
         @emit 'error', err
         callback? err
-        @timerLoop() if @timer?
+        @timerLoop() if @timer? # todo: handle in loop?
         return
 
       loadedMarketIds  = (market.marketId for market in markets)
       newMarketIds     = (marketId for marketId in loadedMarketIds when not @markets[marketId]? and not @ignored[marketId]?)
       removedMarketIds = (marketId for marketId of @markets when not marketId in loadedMarketIds and not @ignored[marketId]?)
       # todo: expiredMarketIds which are not being updated right now <- ????????
-      @emit 'debug', "Loaded markets (id's): #{markets.length}, new: #{newMarketIds.length}, removed: #{removedMarketIds.length}"
+      @emit 'debug', "Loaded markets (IDs): #{markets.length}, new: #{newMarketIds.length}, removed: #{removedMarketIds.length}"
+
+      if newMarketIds.length is 0 then return callback? null, @markets, [], []
 
       # Second, get full market data
-      params = marketProjection: [ 'COMPETITION', 'EVENT', 'EVENT_TYPE', 'MARKET_START_TIME', 'MARKET_DESCRIPTION', 'RUNNER_DESCRIPTION' ]
-      @session.listMarketCatalogueByMarketIds newMarketIds, params, (err, fullMarkets) =>
+      params =
+        filter: marketIds: newMarketIds
+        marketProjection: [ 'COMPETITION', 'EVENT', 'EVENT_TYPE', 'MARKET_START_TIME', 'MARKET_DESCRIPTION', 'RUNNER_DESCRIPTION' ]
+
+      @emit 'debug', "Loading markets (data): ", params
+      @session.listMarketCatalogueAll params, (err, fullMarkets) =>
         # stop() was called
         if not @timer? and @status.loading
-          @emit 'debug', 'Aborting load markets (data) because the instance was stopped'
+          @emit 'debug', 'Aborting load markets (data) because the instance was stopped' # todo: handle in loop?
           return
         if err
           @emit 'error', err
           callback? err
-          @timerLoop() if @timer?
+          @timerLoop() if @timer? # todo: handle in loop?
           return
+
+        @emit 'debug', "Loaded markets (data): #{fullMarkets.length}"
 
         # Add new markets first
         # so that 'load' event listeners can access them
         for market in fullMarkets
+          # todo: sanity check market.marketId in newMarketIds
           @markets[market.marketId] = market
           @emit 'add', market, market.marketId
 
@@ -230,7 +240,9 @@ class MarketMonitor extends events.EventEmitter
       callback? null, markets
       @timerLoop() if @timer?
 
-    @session.listMarketBookAll marketIds, params, completed, partial
+    params = JSON.parse JSON.stringify params
+    params.marketIds = marketIds
+    @session.listMarketBookAll params, completed, partial
     @
 
 exports.MarketMonitor = MarketMonitor
